@@ -2,8 +2,8 @@
 #include <LiquidCrystal.h>
 #include <EEPROM.h>
 
-#define ROWNUM 2
-#define COLNUM 16
+#define ROWNUM 4
+#define COLNUM 20
 
 using byte = unsigned char;
 
@@ -41,8 +41,8 @@ bool iswhite(char c){
     return c == ' ' || c == '\t' || c == '\n';
 }
 
-int mstrfind(const char *src, char target, int beg) {
-  for (int i = beg; src[i] ; i++) {
+int mstrfind(const char *src, char target) {
+  for (int i = 0; src[i] ; i++) {
     if (src[i] == target) return i;
   }
   return -1;
@@ -67,31 +67,11 @@ void print(T v, const unsigned char row = 0, bool strict = false) {
     lcd.print(v);
 }
 
-void print(const char* str, const unsigned char row = 0, bool strict = false) {
-  Serial.println("----------------------------");
-  Serial.print("going to print: ");
-  Serial.println(str);
-  if (row == ROWNUM - 1) {
-    Serial.println("enter this last");
-    clearLine(ROWNUM - 1);
-    lcd.setCursor(0, ROWNUM - 1);
-    lcd.print(str);
-  } else {
-    Serial.println("enter front");
-    clearLine(row);
-    lcd.setCursor(0, row);
-    lcd.print(str);
-    if (strlen(str) > COLNUM) {
-      Serial.println("print recursively");
-      if (strict)
-        return;
-      else
-        print(str + COLNUM, row + 1);
-    }
+void print(const char* str, const unsigned char row = 0) {
+  for(int i = 0; str[i] && i < COLNUM * ROWNUM; i++){
+    lcd.setCursor(i % COLNUM, i / COLNUM);
+    lcd.print(str[i]);
   }
-  Serial.print("-----end print ");
-  Serial.print(str);
-  Serial.println("------");
 }
 
 void printerr(const int code, const char* str) {
@@ -114,43 +94,39 @@ int matchblock(const char* src) {
 }
 
 void parse(const char* src) {
-  Serial.print("begin parse: ");
-  Serial.println(src);
   for (int i = 0; src[i]; i++) {
     if (iswhite(src[i])) continue;
     if (src[i] == 'p') {
-      Serial.println("match p");
       while (src[i] != '{') i++;
-      i += matchblock(src + i + 1);
+      i++;
+      i += matchblock(src + i);
       printPages(buf);
       continue;
     }
     if (src[i] == 'b') {
-      Serial.println("match b");
       while (src[i] != '{') i++;
-      i += matchblock(src + i + 1);
+      i++;
+      i += matchblock(src + i);
+     print(i, 2);
+     print(src[i], 3);
       printBlock(buf);
       continue;
     }
     if (src[i] == '{') {
-      Serial.println("match {");
-      i += matchblock(src + i + 1);
-      Serial.print("going to print: ");
-      Serial.println(buf);
+      i++;
+      i += matchblock(src + i);
       print(buf);
-      Serial.println("print over");
       continue;
     }
     if (src[i] == 'd') {
-      Serial.println("match d");
       delay(2000);
       continue;
     }
     if (src[i] == 'c') {
-      Serial.println("match c");
       lcd.clear();
       continue;
     }
+
   }
 }
 
@@ -160,32 +136,37 @@ void printPages(const char* src) {
     print(src);
   } else {
     for (int i = 0; i < strlen(src); i += ROWNUM * COLNUM) {
-      print(src + i);
-      delay(1000);
       lcd.clear();
+      print(src + i);
+      delay(3000);
     }
   }
 }
 
 void printBlock(const char* str) {
-  int c = 0, l = strlen(str), cc = 1, cr = ROWNUM;
-  for (int i = 0; i < l && str[i] != ';'; i++) {
+  int cc, cr , i ,j, cw , cup, t;
+  for (cc = 1, i = 0; i < strlen(str) && str[i] != ';'; i++) {
     if (str[i] == '&') cc++;
   }
-  int cw = COLNUM / cc, lsp = 0, cup;
+  for(cr = 0, i = 0; str[i] ; i++){
+    if (str[i] == ';') cr++;
+  }
+  cw = COLNUM / cc;
+  cup = 0;
   lcd.clear();
-  for (int i = 0; i < cr; i++) {
-    for (int j = 0; j < cc; j++) {
-      cup = mstrfind(str, '&', lsp);
+  for (i = 0; i < cr; i++) {
+    for (j = 0; j < cc; j++) {
       if (j == cc - 1) {
-        cup = mstrfind(str, ';', lsp);
+        t = mstrfind(str + cup, ';');
+      }else{
+        t = mstrfind(str + cup, '&');
       }
-      strncpy(buf, str + lsp, mmin(cup - lsp, cw));
-      buf[mmin(cup - lsp, cw)] = 0;
+      strncpy(buf, str + cup, t);
+      buf[t] = 0;
       lcd.setCursor(j * cw, i);
       lcd.print(buf);
       clearBuf();
-      lsp = cup + 1;
+      cup += t + 1;
     }
   }
 }
@@ -234,7 +215,7 @@ void record(){
 }
 
 void run() {
-  parse("p {hello world, this is a long part of words, use p} d c {next word} ddd");
+  parse("p {hello world, this is a long part of words, use p to display it in seveal pages, just like this, now the display is bigger...} d dddd");
 }
 
 void tune() {
@@ -273,8 +254,10 @@ void about() {
 }
 
 void setup() { 
-    lcd.begin(16, 2);
+  Serial.begin(9600);
+    lcd.begin(COLNUM, ROWNUM);
     readRecord();
+    while(!Serial);
     parse("b {1.run&2.tune;3.reset&4.about;}");
 }
 
