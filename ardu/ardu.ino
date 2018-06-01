@@ -2,6 +2,8 @@
 #include <LiquidCrystal.h>
 #include <EEPROM.h>
 
+#include "OpenMV.h"
+
 #define ROWNUM 4
 #define COLNUM 20
 
@@ -62,7 +64,6 @@ void clearLine(const unsigned char line) {
 
 template <typename T>
 void print(T v, const unsigned char row = 0) {
-    Serial.println("template");
     clearLine(row);
     lcd.setCursor(0, row);
     lcd.print(v);
@@ -70,7 +71,6 @@ void print(T v, const unsigned char row = 0) {
 
 template <int N>
 void print(char (&str)[N], const unsigned char row = 0) {
-      Serial.println("non-template pt");
   for(int i = 0; str[i] && i < (COLNUM - row) * ROWNUM; i++){
     lcd.setCursor(i % COLNUM, i / COLNUM + row);
     lcd.print(str[i]);
@@ -78,13 +78,8 @@ void print(char (&str)[N], const unsigned char row = 0) {
 }
 
 void print(const char* str, const unsigned char row = 0) {
-      Serial.println("non-template arr");
   for(int i = 0; str[i] && i < (COLNUM - row) * ROWNUM; i++){
     lcd.setCursor(i % COLNUM, i / COLNUM + row);
-    Serial.print("set to ");
-    Serial.print(i % COLNUM);
-    Serial.print(" ");
-    Serial.print(i / COLNUM + row);
     lcd.print(str[i]);
   }
 }
@@ -230,8 +225,31 @@ void record(){
 }
 
 void run() {
-  print("hello world, this is a two-row message", 1);
-  delay(3000);
+  lcd.clear();
+  print("send message", 0);
+  char key = 0;
+  while(key != '#'){
+    key = keypad.getKey();
+    switch(key){
+      case '1':
+      OpenMV::startDetect();
+      print("start;", 1);
+      break;
+      case '2':
+      print(OpenMV::getDir(),2);
+      print("dir;",1);
+      break;
+      case '3':
+      OpenMV::endDetect();
+      print("end;",1);
+      break;
+      case '4':
+      OpenMV::cdLen();
+      print("cd;",1);
+      default:
+      break;
+    }
+  }
 }
 
 void tune() {
