@@ -61,15 +61,30 @@ void clearLine(const unsigned char line) {
 }
 
 template <typename T>
-void print(T v, const unsigned char row = 0, bool strict = false) {
+void print(T v, const unsigned char row = 0) {
+    Serial.println("template");
     clearLine(row);
     lcd.setCursor(0, row);
     lcd.print(v);
 }
 
+template <int N>
+void print(char (&str)[N], const unsigned char row = 0) {
+      Serial.println("non-template pt");
+  for(int i = 0; str[i] && i < (COLNUM - row) * ROWNUM; i++){
+    lcd.setCursor(i % COLNUM, i / COLNUM + row);
+    lcd.print(str[i]);
+  }
+}
+
 void print(const char* str, const unsigned char row = 0) {
-  for(int i = 0; str[i] && i < COLNUM * ROWNUM; i++){
-    lcd.setCursor(i % COLNUM, i / COLNUM);
+      Serial.println("non-template arr");
+  for(int i = 0; str[i] && i < (COLNUM - row) * ROWNUM; i++){
+    lcd.setCursor(i % COLNUM, i / COLNUM + row);
+    Serial.print("set to ");
+    Serial.print(i % COLNUM);
+    Serial.print(" ");
+    Serial.print(i / COLNUM + row);
     lcd.print(str[i]);
   }
 }
@@ -215,7 +230,8 @@ void record(){
 }
 
 void run() {
-  parse("p {hello world, this is a long part of words, use p to display it in seveal pages, just like this, now the display is bigger...} d dddd");
+  print("hello world, this is a two-row message", 1);
+  delay(3000);
 }
 
 void tune() {
@@ -253,12 +269,77 @@ void about() {
   }
 }
 
+
+void ts(){
+  int i;
+  parse("c {use A to return}");
+  while(1){
+    if(Serial.available()){
+      parse("c {use A to return}");
+      for(i = 0; Serial.available();i++){
+        buf[i] = Serial.read();
+        delay(20);
+      }
+      buf[i] = 0;
+      print(buf, 1);
+    }
+    if(keypad.getKey() == 'A') break;
+  }
+  parse("c {end}");
+}
+
+void tg(){
+  bool p22 = false, p23 = false, p22t = false, p23t = false;
+  parse("c {pin 22, 23 is used to test}");
+  pinMode(22, INPUT);
+  pinMode(23, INPUT);
+  while(1){
+    p22 = digitalRead(22);
+    p23 = digitalRead(23);
+    if(p22 != p22t || p23 != p23t){
+      parse("c {pin 22, 23 is used to test. 22, 23}");
+      print(p22,2);
+      print(p23,3);
+      p22t = p22;
+      p23t = p23;
+    }
+    if(keypad.getKey() == 'A') break;
+  }
+  parse("c {end}");
+}
+
+void debug(){
+  char key;
+  parse("b{1. test Serial;2. test GPIO;3. quit;}");
+  while(1){
+  if((key = keypad.getKey()) != NO_KEY){
+  switch(key){
+    case '1':
+      ts();
+      parse("b{1. test Serial;2. test GPIO;3. quit;}");
+      break;
+    case '2':
+      tg();
+      parse("b{1. test Serial;2. test GPIO;3. quit;}");
+      break;
+    case '3':
+    default:
+      return;
+  }
+  }
+  }
+  return;
+}
+
+
+#define MENU "b {1.run&2.tune;3.reset&4.about;5.debug&;}"
+
 void setup() { 
   Serial.begin(9600);
     lcd.begin(COLNUM, ROWNUM);
     readRecord();
     while(!Serial);
-    parse("b {1.run&2.tune;3.reset&4.about;}");
+    parse(MENU);
 }
 
 void loop() {
@@ -266,18 +347,22 @@ void loop() {
   switch (key) {
     case '1':
       run();
-      parse("c {quit} d b {1.run&2.tune;3.reset&4.about;}");
+      parse("c {quit} d" MENU);
       break;
     case '2':
       tune();
-      parse("c {quit} d b {1.run&2.tune;3.reset&4.about;}");
+      parse("c {quit} d" MENU);
       break;
     case '3':
       reset();
-      parse("c {quit} d b {1.run&2.tune;3.reset&4.about;}");
+      parse("c {quit} d" MENU);
     case '4':
       about();
-      parse("c {quit} d b {1.run&2.tune;3.reset&4.about;}");
+      parse("c {quit} d" MENU);
+      break;
+    case '5':
+      debug();
+      parse("c {quit} d" MENU);
     default:
       break;
   }
