@@ -2,6 +2,7 @@
 #include <Keypad.h>
 #include <LiquidCrystal.h>
 
+#include "Chassis.h"
 #include "DisDetectors.hpp"
 #include "Input.h"
 #include "OpenMV.h"
@@ -12,8 +13,6 @@ char buf[256];
 #define DISNUM 5
 DisDetectors<DISNUM> dis;
 
-// for the EEPROM
-
 int state = 0;
 
 // for the DisDetectors
@@ -23,30 +22,32 @@ unsigned char disPins[DISNUM][2] = {
 
 InfoData info;
 
-bool unready() { return info.photoDis < 0 || info.turnDis < 0; }
+int rWheel = 255, lWheel = 255;
 
+bool unready() { return info.photoDis < 0 || info.turnDis < 0; }
 // for the running task
 
 void goStraight() {}
 
-void doControlTurn(int dir) {}
+void doControlTurn(int dir, bool test = false) {}
 
 void doFreeTurn() {}
 
 void doRun() {
   bool sd = false, st = false;
+  int dir = -1;
   while (1) {
     if (dis[0] < info.photoDis && dis[0] > info.turnDis && sd == false) {
       OpenMV::startDetect();
       sd = true;
     }
-    if (dis[0] < info.turnDis&& st == false) {
+    if (dis[0] < info.turnDis && st == false) {
       sd = false;
+      dir = OpenMV::getDir();
       OpenMV::endDetect();
       st = true;
     }
     if (st) {
-      int dir = OpenMV::getDir();
       if (dir == -1) {
         doFreeTurn();
       } else {
@@ -70,53 +71,117 @@ void run() {
   doRun();
 }
 
-void configureDisTurn() {}
+void configureDisTurn() {
+  Output::screen().parse(
+      "c p{now begin to configure the distance where this car would start to "
+      "turn.} c");
+  double d;
+  int dir;
+  char key;
+  while (1) {
+    Output::screen().parse(
+        "c p{put the car at a desired distance and press C to "
+        "continue}");
+    while (Input::device().getKey() != 'C') continue;
+    Output::screen().parse("c {start testing}");
+    d = dis[0];
+    OpenMV::startDetect();
+    delay(1000);
+    dir = OpenMV::getDir();
+    OpenMV::endDetect();
+    doControlTurn(dir, true);
+    Output::screen().print("is everything okay?", 1);
+    Output::screen().print("A: agian. B: save", 3);
+    while ((key = Input::device().getKey()) == NO_KEY) continue;
+    if (key == 'A') {
+      continue;
+    } else {
+      break;
+    }
+  }
+  info.turnDis = d;
+}
 
-void configureDisPhoto() {}
+void configureDisPhoto() {
+  Output::screen().parse(
+      "c p{now begin to configure the distance where this car would start to "
+      "photo and detect.} d");
+  char key;
+  int dir;
+  double d;
+  while (1) {
+    Output::screen().parse(
+        "c p{put the car at a desired distance and press C to "
+        "continue}");
+    while (Input::device().getKey() != 'C') continue;
+    Output::screen().parse("c {start testing}");
+    d = dis[0];
+    OpenMV::startDetect();
+    delay(1000);
+    dir = OpenMV::getDir();
+    OpenMV::endDetect();
+    Output::screen().parse("c {the Result: dis is }");
+    Output::screen().print(d, 1);
+    switch (dir) {
+      case 0:
+        Output::screen().print("left", 2);
+        break;
+      case 1:
+        Output::screen().print("right", 2);
+        break;
+      case -1:
+        Output::screen().print("failed", 2);
+      default:
+        break;
+    }
+    Output::screen().print("A: agian. B: save", 3);
+    while ((key = Input::device().getKey()) == NO_KEY) continue;
+    if (key == 'A') {
+      continue;
+    } else {
+      break;
+    }
+  }
+  info.photoDis = d;
+}
 
 void tune() {
-  info.w = 11.1;
-  info.l = 12.1;
-  info.sensorDis = 11.1;
-  info.photoDis = 29.0;
-  info.turnDis = 11.5;
-  Recorder::disk().record(info);
-//  Output::screen().parse("c b{1. get disPhoto; 2. get disTurn;A to return}");
-//  char key;
-//  while (1) {
-//    key = Input::device().getKey();
-//    if (key != NO_KEY) {
-//      switch (key) {
-//        case '1':
-//          configureDisPhoto();
-//          break;
-//        case '2':
-//          configureDisTurn();
-//          break;
-//        case 'A':
-//          Recorder::disk().record(info);
-//          return;
-//        default:
-//          break;
-//      }
-//    }
-//  }
+  Output::screen().parse("c b{1. get disPhoto; 2. get disTurn;A to return}");
+  char key;
+  while (1) {
+    key = Input::device().getKey();
+    if (key != NO_KEY) {
+      switch (key) {
+        case '1':
+          configureDisPhoto();
+          break;
+        case '2':
+          configureDisTurn();
+          break;
+        case 'A':
+          Recorder::disk().record(info);
+          return;
+        default:
+          break;
+      }
+    }
+  }
 }
 
 void reset() {
   Output::screen().parse("c {reset} d");
-  Output::screen().parse(("c p{you are going to reset the EEPROM.} c p {This process is "
-                 "not recoverable!} d"));
+  Output::screen().parse(
+      ("c p{you are going to reset the EEPROM.} c p {This process is "
+       "not recoverable!} d"));
   char key;
-  while((key = Input::device().getKey()) == NO_KEY) continue;
-  if(key == 'A') 
-  return;
-    else
+  while ((key = Input::device().getKey()) == NO_KEY) continue;
+  if (key == 'A')
+    return;
+  else
     for (int i = 0; i < EEPROM.length(); i++) {
       if (EEPROM.read(i) != 0) EEPROM.write(i, 0);
     }
   Output::screen().parse("c p {the EEPROM has been reset} d d");
-
 }
 
 void aboutpt(double v, const char* err) {
@@ -178,21 +243,52 @@ void tg() {
   Output::screen().parse("c {end}");
 }
 
+void tc() {
+  char key;
+  Output::screen().parse("c {test commands, 1-start, 2-dir, 3-end}");
+  while (1) {
+    key = Input::device().getKey();
+    if (key != NO_KEY) switch (key) {
+        case '1':
+          OpenMV::startDetect();
+          Output::screen().print("start", 3);
+          break;
+        case '2':
+          Output::screen().print(OpenMV::getDir(), 3);
+          break;
+        case '3':
+          OpenMV::endDetect();
+          Output::screen().print("end", 3);
+          break;
+        default:
+          Output::screen().parse("c {end}");
+          return;
+      }
+  }
+}
+
 void debug() {
   char key;
-  Output::screen().parse("b{1. test Serial;2. test GPIO;3. quit;}");
+  Output::screen().parse(
+      "b{1. test Serial;2. test GPIO;3. test commands;4. quit;}");
   while (1) {
     if ((key = Input::device().getKey()) != NO_KEY) {
       switch (key) {
         case '1':
           ts();
-          Output::screen().parse("b{1. test Serial;2. test GPIO;3. quit;}");
+          Output::screen().parse(
+              "b{1. test Serial;2. test GPIO;3. test commands;4. quit;}");
           break;
         case '2':
           tg();
-          Output::screen().parse("b{1. test Serial;2. test GPIO;3. quit;}");
+          Output::screen().parse(
+              "b{1. test Serial;2. test GPIO;3. test commands;4. quit;}");
           break;
         case '3':
+          tc();
+          Output::screen().parse(
+              "b{1. test Serial;2. test GPIO;3. test commands;4. quit;}");
+          break;
         default:
           return;
       }
