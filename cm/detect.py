@@ -5,14 +5,19 @@ sensor.reset()
 sensor.set_contrast(1)
 sensor.set_gainceiling(16)
 sensor.set_framesize(sensor.VGA)
+#we only need gray image
 sensor.set_pixformat(sensor.GRAYSCALE)
-sensor.set_windowing(((640 - 160)//2, (480 - 120)//2, 160, 120))
+#begin the serial
 uart = pyb.UART(3, 9600, timeout_char = 1000)
-templater = image.Image("/arrowr.pgm")
-templatel = image.Image("/arrowl.pgm")
-binary_threshold = (235, 255)
+test_threshold = (0,70)
+binary_threshold = (80, 255)
 
-# Run template matching
+arrowRatio = 557 /296
+
+right = 0
+left = 0
+lenState = 0
+record = 0
 
 def available():
     return uart.any()
@@ -30,18 +35,12 @@ def getCommand():
     print(mstr)
     return mstr
 
-right = 0;
-left = 0;
-lenState = 0;
-record = 0;
-
 def startRecord():
     global right
     global left
     global record
     right = 0
     left = 0
-    lenState = 0
     record = 1
 
 def endRecord():
@@ -50,7 +49,6 @@ def endRecord():
     global record
     right = 0
     left = 0
-    lenState = 0
     record = 0
 
 def getDir():
@@ -60,13 +58,10 @@ def getDir():
     print(left)
     if right > left:
         uart.write('r')
-        print("herer")
     elif left > right:
         uart.write('l')
-        print("herel")
     else:
         uart.write('u')
-        print("hereu")
 
 def cdLenState():
     global lenState
@@ -78,14 +73,28 @@ def cdLenState():
         lenState = 1
         sensor.set_windowing(((640 - 320)//2, (480 - 240)//2, 320, 240))
 
-def correct(img):
-    img.histeq(adaptive=True, clip_limit=3)
-    img.binary([binary_threshold])
-    img.laplacian(1, sharpen=True)
-    img.lens_corr(strength = 1, zoom = 1.0)
-    return img
-
 operation = { "start": startRecord, "end": endRecord, "dir": getDir, "cd": cdLenState}
+
+
+def testRatio(wi, he):
+    err = (wi/he - arrowRatio)/(wi/he)
+    if err > 0.10 or err <- 0.10:
+        return 0
+    return 1
+
+def testDensity(d):
+    if d > 0.9:
+        return 0
+    return 1
+
+def judgeDir(img, a):
+   sl = img.get_statistics(roi = (a.x() + 3 * a.w()//10 ,a.y(), a.w()//5,a.h()))
+   sr = img.get_statistics(roi = (a.x() + a.w()//2, a.y(), a.w()//5,a.h()))
+   print("left is %d" % sl.mean())
+   print("right is %d" % sr.mean())
+   if sl.mean() < sr.mean():
+       return 0
+   return 1
 
 while (True):
     if available():
@@ -93,15 +102,18 @@ while (True):
         print(mstr)
         operation[mstr]()
     img = sensor.snapshot()
-    img = correct(img)
-    if record:
-        r = img.find_template(templater, 0.70, roi = (0,0, img.width(), img.height()), step=4, search=SEARCH_DS)
-        l = img.find_template(templatel, 0.70, roi = (0,0, img.width(), img.height()), step=4, search=SEARCH_DS)
-        if r:
-            img.draw_rectangle(r)
-            right = right + 1
-            print("right")
-        if l:
-            img.draw_rectangle(l)
-            left = left + 1
-            print("left")
+    img.binary([binary_threshold])
+    b = img.find_blobs([test_threshold],area_threshold=400, roi = (0, (480-300)//2, 640,300))
+    res = []
+    if b:
+        for a in b:
+            if testRatio(a.w(), a.h()) and testDensity(a.density()):
+                res.append(a)
+        if len(res) == 1:
+            for a in res:
+                img.draw_rectangle(a[0],a[1], a[2], a[3], color = (0, 200, 0))
+                img.draw_cross(a[5], a[6])
+                if judgeDir(img,a):
+                    print("right")
+                else:
+                    print("left")

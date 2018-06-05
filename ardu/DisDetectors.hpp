@@ -20,34 +20,45 @@ class DisDetectors {
     return distance_length;
   }
   bool rd = false;
+  unsigned long lastReadTime = 0;
+  const unsigned int interval = 100; //read those sensors every 100ms
+
+  bool timeOut(){
+    unsigned long t = millis();
+    return t - lastReadTime > interval;
+  }  
+
+  void setlastReadTime(const unsigned long t){
+    lastReadTime = t;
+  }
+
+  void detect() {
+    for (int i = 0; i < N; i++) {
+      dis[i] = detectSingle(pinSets[i][0], pinSets[i][1]);
+    }
+    rd = true;
+  }
 
  public:
   bool ready() { return rd; }
-  void attach(unsigned char pins[N][2]) {
-    Serial.println("attach");
+  void attach(unsigned char (&pins)[N][2]) {
     for (int i = 0; i < N; i++) {
-      Serial.print("a: two pins are ");
-      Serial.print(pins[i][0]);
-      Serial.println(pins[i][1]);
       pinMode(pins[i][0], OUTPUT);
       pinMode(pins[i][1], INPUT);
       pinSets[i][0] = pins[i][0];
       pinSets[i][1] = pins[i][1];
     }
   }
-  void detect() {
-    Serial.println("detect");
-    for (int i = 0; i < N; i++) {
-      Serial.print("d: two pins are ");
-      Serial.print(pinSets[i][0]);
-      Serial.println(pinSets[i][1]);
-      dis[i] = detectSingle(pinSets[i][0], pinSets[i][1]);
-    }
-    rd = true;
+  double operator[](const unsigned int i){
+    return get(i);
   }
-  double get(const unsigned char pinNum) { 
-    Serial.println("get");
-    return dis[pinNum]; 
+
+  double get(const unsigned int Num) { 
+    if(timeOut() || !ready()){
+      detect();
+      setlastReadTime(millis());
+    }
+    return dis[Num]; 
   }
 };
 
