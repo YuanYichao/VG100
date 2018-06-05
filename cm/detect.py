@@ -9,15 +9,17 @@ sensor.set_framesize(sensor.VGA)
 sensor.set_pixformat(sensor.GRAYSCALE)
 #begin the serial
 uart = pyb.UART(3, 9600, timeout_char = 1000)
+
+#magic numbers
 test_threshold = (0,70)
-binary_threshold = (80, 255)
+binary_threshold = (100, 255)
 
 arrowRatio = 557 /296
 
 right = 0
 left = 0
 lenState = 0
-record = 0
+record = 1
 
 def available():
     return uart.any()
@@ -27,10 +29,8 @@ def getCommand():
     if available():
         while uart.any():
             c = str(chr(uart.readchar()))
-            print(c)
             if c == ";":
                 break
-                print(c)
             mstr += c
     print(mstr)
     return mstr
@@ -87,6 +87,7 @@ def testDensity(d):
         return 0
     return 1
 
+#0 -> left 1 -> right
 def judgeDir(img, a):
    sl = img.get_statistics(roi = (a.x() + 3 * a.w()//10 ,a.y(), a.w()//5,a.h()))
    sr = img.get_statistics(roi = (a.x() + a.w()//2, a.y(), a.w()//5,a.h()))
@@ -96,14 +97,12 @@ def judgeDir(img, a):
        return 0
    return 1
 
-while (True):
-    if available():
-        mstr = getCommand()
-        print(mstr)
-        operation[mstr]()
+#0-> left 1->right
+def detectDir():
     img = sensor.snapshot()
     img.binary([binary_threshold])
-    b = img.find_blobs([test_threshold],area_threshold=400, roi = (0, (480-300)//2, 640,300))
+    b = img.find_blobs([test_threshold], area_threshold=400,
+                       roi=(0, (480-300)//2, 640, 300))
     res = []
     if b:
         for a in b:
@@ -111,9 +110,24 @@ while (True):
                 res.append(a)
         if len(res) == 1:
             for a in res:
-                img.draw_rectangle(a[0],a[1], a[2], a[3], color = (0, 200, 0))
+                img.draw_rectangle(a[0], a[1], a[2], a[3], color=(0, 200, 0))
                 img.draw_cross(a[5], a[6])
-                if judgeDir(img,a):
+                if judgeDir(img, a):
                     print("right")
+                    return 1
                 else:
                     print("left")
+                    return 0
+
+while (True):
+    if available():
+        mstr = getCommand()
+        print(mstr)
+        operation[mstr]()
+    if record:
+        lr = detectDir()
+        if lr:
+            right += 1
+        else:
+            left += 1
+
