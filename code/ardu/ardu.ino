@@ -1,7 +1,4 @@
 #include <EEPROM.h>
-#include <Keypad.h>
-#include <LiquidCrystal.h>
-
 #include "Chassis.h"
 #include "DisDetectors.hpp"
 #include "Input.h"
@@ -10,6 +7,7 @@
 #include "Recorder.h"
 
 char buf[256];
+const double RANGE = 0.5;
 
 // f, r1, r2, l1, l2
 #define DISNUM 5
@@ -18,7 +16,8 @@ unsigned char disPins[DISNUM][2] = {
     {24, 25}, {26, 27}, {28, 29}, {30, 31}, {32, 33}};
 
 InfoData info;
-unsigned char rWheel = 255, lWheel = 255;
+const unsigned char RWMAX = 255, LWMAX = 255;
+unsigned char rWheel = RWMAX, lWheel = LWMAX;
 
 const double MINTURNDIS = 20.00;
 
@@ -35,7 +34,71 @@ double turnOuterRadius() { return dis[0] + info.l - avgSideWidth(); }
 
 double turnInnerRadius() { return turnOuterRadius() - info.w; }
 
-void goStraight() {}
+// positive to right, neg to left
+int unnormalSingle() {
+  if (abs(dis[1] - dis[2]) > RANGE) return dis[2] - dis[1];
+}
+
+int unnormalDouble() {
+  if (abs(avgDisLeft() - avgDisRight()) > RANGE)
+    return avgDisRight() - avgDisLeft();
+}
+
+bool unnormal() { return unnormalSingle() || unnormalDouble(); }
+
+bool hasFixedS() { return abs(dis[1] - dis[2]) < RANGE; }
+
+bool hasFixedD() { return abs(avgDisLeft() - avgDisRight()) < RANGE; }
+
+void goStraight() {
+  static long lastTimeS = 0, lastTimeD = 0;
+  static bool fixingS = false, fixingD = false;
+  static int dir, step = 1;
+  static const int INTERVAL = 100;
+  // start a fixing task
+  if (unnormalSingle() && !fixingS && !fixingD) {
+    fixingS = true;
+    lastTimeS = millis();
+  }
+  if (unnormalDouble() && !fixingS && !fixingD) {
+    fixingD = true;
+    lastTimeD = millis();
+  }
+  // alter step
+  if (fixingS) {
+    dir = unnormalSingle();
+    if (lastTimeS - millis() > INTERVAL) {
+      step *= 2;
+      lastTimeS = millis();
+    }
+  }
+  if (fixingD) {
+    dir = unnormalDouble();
+    if (lastTimeD - millis() > INTERVAL) {
+      step *= 2;
+      lastTimeD = millis();
+    }
+  }
+  if (dir > 0) {
+    rWheel -= step;
+  } else {
+    lWheel -= step;
+  }
+  // end task
+  if (fixingS && hasFixedS()) {
+    fixingS = false;
+    rWheel = RWMAX;
+    lWheel = LWMAX;
+    step = 1;
+  }
+  if (fixingD && hasFixedD()) {
+    fixingD = false;
+    rWheel = RWMAX;
+    lWheel = LWMAX;
+    step = 1;
+  }
+  Chassis::state().write(rWheel, lWheel);
+}
 
 bool withinError(double dis1, double dis2, double Merror) {
   double error = dis1 - dis2;
@@ -43,9 +106,9 @@ bool withinError(double dis1, double dis2, double Merror) {
   return abserror < Merror;
 }
 
-bool isTurningEnd(int dir, bool test = false, long stTime =0) {
+bool isTurningEnd(int dir, bool test = false, long stTime = 0) {
   bool isEnd = false;
-  if (withinError(dis[1 + dir * 2], dis[2 + dir * 2], 0.5)) isEnd = true;
+  if (withinError(dis[1 + dir * 2], dis[2 + dir * 2], RANGE)) isEnd = true;
   if (test) {
     if (millis() - stTime > 4000) isEnd = true;
   }
@@ -68,12 +131,12 @@ void doControlTurn(int dir, bool test = false) {
 }
 
 void doFreeTurn() {
-  while (dis[0] < MINTURNDIS) Chassis::state().write(255, 255);
+  while (dis[0] < MINTURNDIS) Chassis::state().write(RWMAX, LWMAX);
   int dir = dis[1] > dis[3] ? dir = 1 : dir = 0;
   if (dir) {
-    Chassis::state().write(0, 255);
+    Chassis::state().write(0, LWMAX);
   } else {
-    Chassis::state().write(255, 0);
+    Chassis::state().write(RWMAX, 0);
   }
   while (!withinError(dis[1 + dir * 2], dis[2 + dir * 2], 1))
     Chassis::state().move();
