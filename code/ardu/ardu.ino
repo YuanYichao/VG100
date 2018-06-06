@@ -10,28 +10,74 @@
 #include "Recorder.h"
 
 char buf[256];
+
+// f, r1, r2, l1, l2
 #define DISNUM 5
 DisDetectors<DISNUM> dis;
-
-int state = 0;
-
-// for the DisDetectors
-// f, r1, r2, l1, l2
 unsigned char disPins[DISNUM][2] = {
     {24, 25}, {26, 27}, {28, 29}, {30, 31}, {32, 33}};
 
 InfoData info;
+unsigned char rWheel = 255, lWheel = 255;
 
-int rWheel = 255, lWheel = 255;
+const double MINTURNDIS = 20.00;
 
 bool unready() { return info.photoDis < 0 || info.turnDis < 0; }
 // for the running task
 
+double avgDisRight() { return (dis[1] + dis[2]) / 2; }
+
+double avgDisLeft() { return (dis[3] + dis[4]) / 2; }
+
+double avgSideWidth() { return (avgDisRight() + avgDisLeft()) / 2; }
+
+double turnOuterRadius() { return dis[0] + info.l - avgSideWidth(); }
+
+double turnInnerRadius() { return turnOuterRadius() - info.w; }
+
 void goStraight() {}
 
-void doControlTurn(int dir, bool test = false) {}
+bool withinError(double dis1, double dis2, double Merror) {
+  double error = dis1 - dis2;
+  double abserror = error > 0 ? error : -error;
+  return abserror < Merror;
+}
 
-void doFreeTurn() {}
+bool isTurningEnd(int dir, bool test = false, long stTime =0) {
+  bool isEnd = false;
+  if (withinError(dis[1 + dir * 2], dis[2 + dir * 2], 0.5)) isEnd = true;
+  if (test) {
+    if (millis() - stTime > 4000) isEnd = true;
+  }
+  return isEnd;
+}
+
+void doControlTurn(int dir, bool test = false) {
+  long stTime = millis();
+  double ratio = turnOuterRadius() / turnInnerRadius();
+  if (dir) {
+    rWheel *= ratio;
+  } else {
+    lWheel *= ratio;
+  }
+  Chassis::state().write(rWheel, lWheel);
+  while (1) {
+    if (isTurningEnd(dir, test, stTime)) return;
+    Chassis::state().move();
+  }
+}
+
+void doFreeTurn() {
+  while (dis[0] < MINTURNDIS) Chassis::state().write(255, 255);
+  int dir = dis[1] > dis[3] ? dir = 1 : dir = 0;
+  if (dir) {
+    Chassis::state().write(0, 255);
+  } else {
+    Chassis::state().write(255, 0);
+  }
+  while (!withinError(dis[1 + dir * 2], dis[2 + dir * 2], 1))
+    Chassis::state().move();
+}
 
 void doRun() {
   bool sd = false, st = false;
@@ -56,6 +102,7 @@ void doRun() {
       st = false;
     }
     goStraight();
+    Chassis::state().move();
   }
 }
 
