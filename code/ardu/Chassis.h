@@ -26,7 +26,7 @@ class Chassis {
   int lPower;
   public:
   static Chassis& state(){
-      static Chassis c(36, 37,2,38,39,3);
+      static Chassis c(8, 9,2,10,11,3);
       return c;
   }
   void move();

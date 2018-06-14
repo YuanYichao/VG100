@@ -2,6 +2,7 @@
 #define OUTPUT_H
 
 #include <LiquidCrystal.h>
+#include <arduino.h>
 
 /*
  * rs pin ->50, en pin -> 52, d4 - d7 -> 53, 51, 49, 47
@@ -35,7 +36,6 @@ class Output {
   }
   template <typename T>
   void print(T v, const unsigned char row = 0) {
-    lcd.clear();
     lcd.setCursor(0, row);
     lcd.print(v);
   }

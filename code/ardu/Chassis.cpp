@@ -1,4 +1,5 @@
 #include "Chassis.h"
+#include <arduino.h>
 
 void Chassis::move(){
     if(rPower > 0){
@@ -21,8 +22,8 @@ void Chassis::move(){
       digitalWrite(L1, LOW);
       digitalWrite(L2, LOW);
     }
-    int rp = rPower > 0? rPower : -rPower;
-    int lp = lPower > 0? lPower : -lPower;
+    int rp = abs(rPower);
+    int lp = abs(lPower);
     analogWrite(ENR, rp);
     analogWrite(ENL, lp);
 }

@@ -21,7 +21,7 @@ class DisDetectors {
   }
   bool rd = false;
   unsigned long lastReadTime = 0;
-  const unsigned int interval = 100; //read those sensors every 100ms
+  const unsigned int interval = 20; //read those sensors every 100ms
 
   bool timeOut(){
     unsigned long t = millis();

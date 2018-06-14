@@ -19,7 +19,7 @@ arrowRatio = 557 /296
 right = 0
 left = 0
 lenState = 0
-record = 1
+record = 0
 
 def available():
     return uart.any()
@@ -27,13 +27,16 @@ def available():
 def getCommand():
     mstr = ""
     if available():
-        while uart.any():
-            c = str(chr(uart.readchar()))
-            if c == ";":
-                break
-            mstr += c
+        c = str(chr(uart.readchar()))
+        print(c)
+        mstr += c
+        while c != ";":
+            if available():
+                c = str(chr(uart.readchar()))
+                print(c)
+                mstr += c
     print(mstr)
-    return mstr
+    return mstr[:-1]
 
 def startRecord():
     global right
@@ -130,4 +133,3 @@ while (True):
             right += 1
         else:
             left += 1
-

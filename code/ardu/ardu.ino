@@ -1,4 +1,5 @@
 #include <EEPROM.h>
+#include <stdio.h>
 #include "Chassis.h"
 #include "DisDetectors.hpp"
 #include "Input.h"
@@ -36,12 +37,14 @@ double turnInnerRadius() { return turnOuterRadius() - info.w; }
 
 // positive to right, neg to left
 int unnormalSingle() {
-  if (abs(dis[1] - dis[2]) > RANGE) return dis[2] - dis[1];
+  if (abs((dis[1] - dis[2])) > RANGE) return dis[1] - dis[2];
+  else return 0;
 }
 
 int unnormalDouble() {
   if (abs(avgDisLeft() - avgDisRight()) > RANGE)
     return avgDisRight() - avgDisLeft();
+  else return 0;
 }
 
 bool unnormal() { return unnormalSingle() || unnormalDouble(); }
@@ -51,16 +54,18 @@ bool hasFixedS() { return abs(dis[1] - dis[2]) < RANGE; }
 bool hasFixedD() { return abs(avgDisLeft() - avgDisRight()) < RANGE; }
 
 void goStraight() {
-  static long lastTimeS = 0, lastTimeD = 0;
-  static bool fixingS = false, fixingD = false;
-  static int dir, step = 1;
-  static const int INTERVAL = 100;
+  static const int INTERVAL = 5, STEPVAL = 10;
+  long lastTimeS = 0, lastTimeD = 0;
+  bool fixingS = false, fixingD = false;
+  int dir = 0, step = STEPVAL;
   // start a fixing task
   if (unnormalSingle() && !fixingS && !fixingD) {
+    Output::screen().parse("{enter FS}");
     fixingS = true;
     lastTimeS = millis();
   }
   if (unnormalDouble() && !fixingS && !fixingD) {
+    Output::screen().parse("{enter FD}");
     fixingD = true;
     lastTimeD = millis();
   }
@@ -68,34 +73,41 @@ void goStraight() {
   if (fixingS) {
     dir = unnormalSingle();
     if (lastTimeS - millis() > INTERVAL) {
-      step *= 2;
+      step += STEPVAL;
       lastTimeS = millis();
     }
   }
   if (fixingD) {
     dir = unnormalDouble();
     if (lastTimeD - millis() > INTERVAL) {
-      step *= 2;
+      step += STEPVAL;
       lastTimeD = millis();
     }
   }
-  if (dir > 0) {
+  if (dir > 0 && (fixingD || fixingS)) {
     rWheel -= step;
-  } else {
+  } else if(dir <0) {
     lWheel -= step;
   }
+  Output::screen().print(dir,1);
+  Output::screen().print(rWheel,2);
+  Output::screen().print(lWheel,3);
   // end task
   if (fixingS && hasFixedS()) {
+    Output::screen().parse("{quit FS}");
     fixingS = false;
     rWheel = RWMAX;
     lWheel = LWMAX;
-    step = 1;
+    dir = 0;
+    step = STEPVAL;
   }
   if (fixingD && hasFixedD()) {
+    Output::screen().parse("{quit FD}");
     fixingD = false;
     rWheel = RWMAX;
     lWheel = LWMAX;
-    step = 1;
+    dir =0;
+    step = STEPVAL;
   }
   Chassis::state().write(rWheel, lWheel);
 }
@@ -118,9 +130,9 @@ bool isTurningEnd(int dir, bool test = false, long stTime = 0) {
 void doControlTurn(int dir, bool test = false) {
   long stTime = millis();
   double ratio = turnOuterRadius() / turnInnerRadius();
-  if (dir) {
+  if (dir > 0) {
     rWheel *= ratio;
-  } else {
+  } else if (dir < 0) {
     lWheel *= ratio;
   }
   Chassis::state().write(rWheel, lWheel);
@@ -133,9 +145,9 @@ void doControlTurn(int dir, bool test = false) {
 void doFreeTurn() {
   while (dis[0] < MINTURNDIS) Chassis::state().write(RWMAX, LWMAX);
   int dir = dis[1] > dis[3] ? dir = 1 : dir = 0;
-  if (dir) {
+  if (dir > 0) {
     Chassis::state().write(0, LWMAX);
-  } else {
+  } else if(dir < 0) {
     Chassis::state().write(RWMAX, 0);
   }
   while (!withinError(dis[1 + dir * 2], dis[2 + dir * 2], 1))
@@ -377,27 +389,116 @@ void tc() {
   }
 }
 
+void tm() {
+  char key;
+  Output::screen().parse("c {test motors, A to break} d d");
+  while (1) {
+    key = Input::device().getKey();
+    if (key == 'A') break;
+    Output::screen().parse("c {right motor moves forward}");
+    Chassis::state().write(200, 0);
+    Chassis::state().move();
+    delay(5000);
+    Output::screen().parse("c {left motor moves forward}");
+    Chassis::state().write(0, 200);
+    Chassis::state().move();
+    delay(5000);
+    Output::screen().parse("c {right motor moves backward}");
+    Chassis::state().write(-200, 0);
+    Chassis::state().move();
+    delay(5000);
+    Output::screen().parse("c {left motor moves backward}");
+    Chassis::state().write(0, -200);
+    Chassis::state().move();
+    delay(5000);
+  }
+  Output::screen().parse("c {end}");
+}
+
+void tss() {
+  char key;
+  int cur = 0;
+  long lastT = millis();
+  Output::screen().parse("c {test sensors, numbers to switch, A to break} d d");
+  while (1) {
+    Serial.print("loop at ");
+    Serial.println(millis());
+    key = Input::device().getKey();
+    if (key != NO_KEY) switch (key) {
+        case '0':
+        case '1':
+        case '2':
+        case '3':
+        case '4':
+        case '5':     
+          cur = key - '0';
+          break;
+        default:
+          Output::screen().parse("c {end}");
+          return;
+      }
+      Serial.println(millis());
+     Output::screen().print(dis[cur]);
+     Serial.print("next at ");
+     Serial.println(millis());
+  }
+}
+
+void singleMove(){
+  Output::screen().parse("c {smove}");
+  long t= millis();
+  while(dis[0] > 20){
+    if(millis() - t % 50 > 40){
+//      Output::screen().print(dis[1],0);
+//       Output::screen().print(dis[2],1);
+//       Output::screen().print(dis[3],2);
+//       Output::screen().print(dis[4],3);
+    }
+    goStraight();
+    Chassis::state().move();
+  }
+  rWheel= RWMAX;
+  lWheel = LWMAX;
+  Chassis::state().write(0,0);
+  Chassis::state().move();
+}
+
 void debug() {
   char key;
   Output::screen().parse(
-      "b{1. test Serial;2. test GPIO;3. test commands;4. quit;}");
+      "b{1.serial&2.GPIO;3.command&4.moter;5.sensor&6.smove;}");
   while (1) {
     if ((key = Input::device().getKey()) != NO_KEY) {
       switch (key) {
         case '1':
           ts();
           Output::screen().parse(
-              "b{1. test Serial;2. test GPIO;3. test commands;4. quit;}");
+              "b{1.serial&2.GPIO;3.command&4.moter;5.sensor&6.smove;}");
           break;
         case '2':
           tg();
           Output::screen().parse(
-              "b{1. test Serial;2. test GPIO;3. test commands;4. quit;}");
+              "b{1.serial&2.GPIO;3.command&4.moter;5.sensor&6.smove;}");
           break;
         case '3':
           tc();
           Output::screen().parse(
-              "b{1. test Serial;2. test GPIO;3. test commands;4. quit;}");
+              "b{1.serial&2.GPIO;3.command&4.moter;5.sensor&6.smove;}");
+          break;
+        case '4':
+          tm();
+          Output::screen().parse(
+              "b{1.serial&2.GPIO;3.command&4.moter;5.sensor&6.smove;}");
+          break;
+         case '5':
+         tss();
+          Output::screen().parse(
+              "b{1.serial&2.GPIO;3.command&4.moter;5.sensor&6.smove;}");
+          break;
+         case '6':
+         singleMove();
+         Output::screen().parse(
+              "b{1.serial&2.GPIO;3.command&4.moter;5.sensor&6.smove;}");
           break;
         default:
           return;
