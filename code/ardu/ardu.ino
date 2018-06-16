@@ -8,7 +8,7 @@
 #include "Recorder.h"
 
 char buf[256];
-const double RANGE = 0.5;
+const double RANGE = 100;
 
 // f, r1, r2, l1, l2
 #define DISNUM 5
@@ -20,31 +20,36 @@ InfoData info;
 const unsigned char RWMAX = 255, LWMAX = 255;
 unsigned char rWheel = RWMAX, lWheel = LWMAX;
 
-const double MINTURNDIS = 20.00;
+const long MINTURNDIS = 600;
+const int TURNDELAY = 270;
+const int AFTDELAY = 1000;
 
 bool unready() { return info.photoDis < 0 || info.turnDis < 0; }
 // for the running task
 
-double avgDisRight() { return (dis[1] + dis[2]) / 2; }
+int avgDisRight() { return (dis[1] + dis[2]) / 2; }
 
-double avgDisLeft() { return (dis[3] + dis[4]) / 2; }
+int avgDisLeft() { return (dis[3] + dis[4]) / 2; }
 
-double avgSideWidth() { return (avgDisRight() + avgDisLeft()) / 2; }
+int avgSideWidth() { return (avgDisRight() + avgDisLeft()) / 2; }
 
-double turnOuterRadius() { return dis[0] + info.l - avgSideWidth(); }
+int turnOuterRadius() { return dis[0] + info.l - avgSideWidth(); }
 
-double turnInnerRadius() { return turnOuterRadius() - info.w; }
+int turnInnerRadius() { return turnOuterRadius() - info.w; }
 
 // positive to right, neg to left
 int unnormalSingle() {
-  if (abs((dis[1] - dis[2])) > RANGE) return dis[1] - dis[2];
-  else return 0;
+  if (abs((dis[1] - dis[2])) > RANGE)
+    return dis[1] - dis[2];
+  else
+    return 0;
 }
 
 int unnormalDouble() {
   if (abs(avgDisLeft() - avgDisRight()) > RANGE)
     return avgDisRight() - avgDisLeft();
-  else return 0;
+  else
+    return 0;
 }
 
 bool unnormal() { return unnormalSingle() || unnormalDouble(); }
@@ -53,69 +58,102 @@ bool hasFixedS() { return abs(dis[1] - dis[2]) < RANGE; }
 
 bool hasFixedD() { return abs(avgDisLeft() - avgDisRight()) < RANGE; }
 
-void goStraight() {
-  static const int INTERVAL = 5, STEPVAL = 10;
-  long lastTimeS = 0, lastTimeD = 0;
-  bool fixingS = false, fixingD = false;
-  int dir = 0, step = STEPVAL;
+void adjustAngle(){
+  int dir = unnormalSingle();
+  int low = -250, high = 250;
+  if(dir >0){
+    Chassis::state().write(low, high);
+  }else{
+    Chassis::state().write(high, low);
+  }
+  Chassis::state().move();
+}
+
+void fourSensorsStraight(){
+  Output::screen().print("FourStraight",3);
+  static const int INTERVAL = 5, STEPVAL = 100;
+  int dir = 0, step = 0;
   // start a fixing task
-  if (unnormalSingle() && !fixingS && !fixingD) {
-    Output::screen().parse("{enter FS}");
-    fixingS = true;
-    lastTimeS = millis();
+  if(!unnormalSingle() && !unnormalDouble()){
+    rWheel = RWMAX;
+    lWheel = LWMAX;
+    Chassis::state().write(rWheel, lWheel);
   }
-  if (unnormalDouble() && !fixingS && !fixingD) {
-    Output::screen().parse("{enter FD}");
-    fixingD = true;
-    lastTimeD = millis();
-  }
-  // alter step
-  if (fixingS) {
+  if (unnormalSingle()) {
     dir = unnormalSingle();
-    if (lastTimeS - millis() > INTERVAL) {
-      step += STEPVAL;
-      lastTimeS = millis();
+    if(abs(dir) > 250) {
+      adjustAngle();
+      return;
+    }
+    if (dir > 0) {
+      step += STEPVAL; 
+    }
+    else{
+      step -= STEPVAL;
     }
   }
-  if (fixingD) {
+  if (unnormalDouble()) {
     dir = unnormalDouble();
-    if (lastTimeD - millis() > INTERVAL) {
+
+    if (dir > 0) {
       step += STEPVAL;
-      lastTimeD = millis();
+    } else {
+      step -= STEPVAL;
     }
   }
-  if (dir > 0 && (fixingD || fixingS)) {
-    rWheel -= step;
-  } else if(dir <0) {
-    lWheel -= step;
+  if(step >0){
+    rWheel = RWMAX - step;
   }
-  Output::screen().print(dir,1);
-  Output::screen().print(rWheel,2);
-  Output::screen().print(lWheel,3);
-  // end task
-  if (fixingS && hasFixedS()) {
-    Output::screen().parse("{quit FS}");
-    fixingS = false;
-    rWheel = RWMAX;
-    lWheel = LWMAX;
-    dir = 0;
-    step = STEPVAL;
-  }
-  if (fixingD && hasFixedD()) {
-    Output::screen().parse("{quit FD}");
-    fixingD = false;
-    rWheel = RWMAX;
-    lWheel = LWMAX;
-    dir =0;
-    step = STEPVAL;
+  else{
+    lWheel = LWMAX - abs(step);
   }
   Chassis::state().write(rWheel, lWheel);
 }
 
-bool withinError(double dis1, double dis2, double Merror) {
-  double error = dis1 - dis2;
-  double abserror = error > 0 ? error : -error;
-  return abserror < Merror;
+void dualSensorsFront(){
+  Output::screen().print("DualFStraight",3);
+  if(dis[1] > dis[3]){
+    rWheel = RWMAX - 80;
+  }else if(dis[1] < dis[3]){
+    lWheel = LWMAX - 80;
+  }
+  Chassis::state().write(rWheel, lWheel);
+}
+
+void dualSensorsBack(){
+  Output::screen().print("DualBFStraight",3);
+  if(dis[2] > dis[4]){
+    rWheel = RWMAX - 80;
+  }else if(dis[2] < dis[4]){
+    lWheel = LWMAX - 80;
+  }
+  Chassis::state().write(rWheel, lWheel);
+}
+
+
+void goStraight() {
+   dis.detect();
+   if(dis.normal(1) && dis.normal(2) && dis.normal(3) && dis.normal(4)){
+    fourSensorsStraight();
+   }else if(dis.normal(1) && dis.normal(3)){
+    dis.avlb(2);
+    dis.avlb(4);
+    dualSensorsFront();
+    dis.avlb(2);
+    dis.avlb(4);
+   }else if(dis.normal(2) && dis.normal(4)){
+    dis.avlb(1);
+    dis.avlb(3);
+    dualSensorsBack();
+    dis.avlb(1);
+    dis.avlb(3);
+   }
+   Chassis::state().move();
+}
+
+bool withinError(long dis1, long dis2, long Merror) {
+  int error = abs(dis1 - dis2);
+  return error < Merror;
 }
 
 bool isTurningEnd(int dir, bool test = false, long stTime = 0) {
@@ -143,15 +181,50 @@ void doControlTurn(int dir, bool test = false) {
 }
 
 void doFreeTurn() {
-  while (dis[0] < MINTURNDIS) Chassis::state().write(RWMAX, LWMAX);
-  int dir = dis[1] > dis[3] ? dir = 1 : dir = 0;
-  if (dir > 0) {
-    Chassis::state().write(0, LWMAX);
-  } else if(dir < 0) {
-    Chassis::state().write(RWMAX, 0);
-  }
-  while (!withinError(dis[1 + dir * 2], dis[2 + dir * 2], 1))
-    Chassis::state().move();
+//  Output::screen().print("FreeTurn",3);
+//  long avgW = 700;
+//  while (dis[1] < 2000 && dis[3] < 2000){
+//     sprintf(buf, "c b{%ld&%ld;%ld&%ld;%ld&%d;}",dis[0] , dis[1], dis[2], dis[3], dis[4], -999);
+//     Output::screen().parse(buf);
+//  }
+//  int dir = dis[1] > dis[3] ? dir = 1 : dir = 0;
+//  Chassis::state().write(RWMAX, RWMAX);
+//  while (dis[0] > MINTURNDIS){
+//     sprintf(buf, "c b{%ld&%ld;%ld&%ld;%ld&%d;}",dis[0] , dis[1], dis[2], dis[3], dis[4], -999);
+//     Output::screen().parse(buf);
+//  }
+//  Output::screen().clear();Output::screen().print("ggggg",3);
+//  long df = dis[0], cl = 1500, cw = 2200;
+//  long disOut = cl + dis[0] - cw - 2 * avgW;
+//  int high = LWMAX - 100;
+//  int low = (high) * (double)(disOut + avgW)/(double)(disOut + avgW + cw);
+//  if (dir > 0) {
+//     Chassis::state().write(low, high);
+//     Chassis::state().move();
+//     while(!withinError(dis[3], dis[4], 300) || dis[4] > 1000 || dis[3] > 1000 || dis[0] <4000) {
+//      sprintf(buf, "c b{%ld&%ld;%ld&%ld;%ld&%d;}",dis[0] , dis[1], dis[2], dis[3], dis[4], low);
+//     Output::screen().parse(buf);
+//     }
+//  } else {
+//    Output::screen().clear();
+//     Chassis::state().write(high, low);
+//     Chassis::state().move();
+//     while(!withinError(dis[1], dis[2], 300) ||  dis[1] > 1000 || dis[2] > 1000 || dis[0] <4000) {
+//      sprintf(buf, "c b{%ld&%ld;%ld&%ld;%ld&%d;}",dis[0] , dis[1], dis[2], dis[3], dis[4], low);
+//     Output::screen().parse(buf);
+//     }
+//  }
+//  Chassis::state().write(RWMAX, RWMAX);
+     while (dis[0] > MINTURNDIS) continue;
+     if(dis[1] > dis[3]){
+      Chassis::state().write(-255,255);
+     }else{
+      Chassis::state().write(255, -255);
+     }
+     Chassis::state().move();
+     delay(TURNDELAY);
+     Chassis::state().write(255, 255);
+     delay(AFTDELAY);    
 }
 
 void doRun() {
@@ -391,76 +464,69 @@ void tc() {
 
 void tm() {
   char key;
-  Output::screen().parse("c {test motors, A to break} d d");
-  while (1) {
+  Output::screen().print("ready",3);
+  while(1){
     key = Input::device().getKey();
-    if (key == 'A') break;
-    Output::screen().parse("c {right motor moves forward}");
-    Chassis::state().write(200, 0);
-    Chassis::state().move();
-    delay(5000);
-    Output::screen().parse("c {left motor moves forward}");
-    Chassis::state().write(0, 200);
-    Chassis::state().move();
-    delay(5000);
-    Output::screen().parse("c {right motor moves backward}");
-    Chassis::state().write(-200, 0);
-    Chassis::state().move();
-    delay(5000);
-    Output::screen().parse("c {left motor moves backward}");
-    Chassis::state().write(0, -200);
-    Chassis::state().move();
-    delay(5000);
+    if(key == 'A') return;
+    if(key == 'B'){
+      int ti = 0;
+      while((key = Input::device().getKey()) == NO_KEY); 
+      ti += (key - '0') * 100;
+      while((key = Input::device().getKey()) == NO_KEY); 
+      ti += (key - '0') * 10; 
+      Output::screen().clear();
+      Output::screen().print(ti);
+      Chassis::state().write(-255, 255);
+      Chassis::state().move();
+      delay(ti);
+      Output::screen().print("ready",3);
+      Chassis::state().write(0, 0);
+      Chassis::state().move();
+    }
   }
-  Output::screen().parse("c {end}");
 }
 
 void tss() {
-  char key;
-  int cur = 0;
-  long lastT = millis();
-  Output::screen().parse("c {test sensors, numbers to switch, A to break} d d");
+  char key = 0;
+  unsigned char st;
+  Output::screen().parse("c {A to break}");
   while (1) {
-    Serial.print("loop at ");
-    Serial.println(millis());
-    key = Input::device().getKey();
-    if (key != NO_KEY) switch (key) {
-        case '0':
-        case '1':
-        case '2':
-        case '3':
-        case '4':
-        case '5':     
-          cur = key - '0';
-          break;
-        default:
-          Output::screen().parse("c {end}");
-          return;
-      }
-      Serial.println(millis());
-     Output::screen().print(dis[cur]);
-     Serial.print("next at ");
-     Serial.println(millis());
+     key = Input::device().getKey();
+     st = dis.curState();
+     if (key == 'A') break;
+     if(key >= '0' && key <= '4'){
+      dis.avlb(key - '0');
+      Serial.print("enter");
+     }
+     sprintf(buf, "c b{%ld&%ld;%ld&%ld;%ld&;}",dis[0] , dis[1], dis[2], dis[3], dis[4]);
+     Output::screen().parse(buf);
   }
 }
 
-void singleMove(){
-  Output::screen().parse("c {smove}");
-  long t= millis();
-  while(dis[0] > 20){
-    if(millis() - t % 50 > 40){
-//      Output::screen().print(dis[1],0);
-//       Output::screen().print(dis[2],1);
-//       Output::screen().print(dis[3],2);
-//       Output::screen().print(dis[4],3);
+void singleMove() {
+//  Output::screen().parse("c {smove}");
+//  long t = millis();
+//  while (dis[0] > 2500) {
+//    sprintf(buf, "c b{%ld&%ld;%ld&%ld;%ld&;}",dis[0] , dis[1], dis[2], dis[3], dis[4]);
+//    Output::screen().parse(buf);
+//    goStraight();
+//    Chassis::state().move();
+//  }
+//  rWheel = RWMAX;
+//  lWheel = LWMAX;
+//  doFreeTurn();
+//  while (dis[0] > 2500) {
+//    sprintf(buf, "c b{%ld&%ld;%ld&%ld;%ld&;}",dis[0] , dis[1], dis[2], dis[3], dis[4]);
+//     Output::screen().parse(buf);
+//    goStraight();
+//    Chassis::state().move();
+//  }
+//  Chassis::state().write(0, 0);
+//  Chassis::state().move();
+    while(1){
+      if(dis[0] < 3000) doFreeTurn();
+      goStraight();
     }
-    goStraight();
-    Chassis::state().move();
-  }
-  rWheel= RWMAX;
-  lWheel = LWMAX;
-  Chassis::state().write(0,0);
-  Chassis::state().move();
 }
 
 void debug() {
@@ -490,14 +556,14 @@ void debug() {
           Output::screen().parse(
               "b{1.serial&2.GPIO;3.command&4.moter;5.sensor&6.smove;}");
           break;
-         case '5':
-         tss();
+        case '5':
+          tss();
           Output::screen().parse(
               "b{1.serial&2.GPIO;3.command&4.moter;5.sensor&6.smove;}");
           break;
-         case '6':
-         singleMove();
-         Output::screen().parse(
+        case '6':
+          singleMove();
+          Output::screen().parse(
               "b{1.serial&2.GPIO;3.command&4.moter;5.sensor&6.smove;}");
           break;
         default:
