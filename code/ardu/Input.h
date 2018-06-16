@@ -1,6 +1,7 @@
 #ifndef INPUT_H
 #define INPUT_H
 #include <Keypad.h>
+#include "Output.h"
 
 static const byte ROWS = 4;
 static const byte COLS = 4;
@@ -27,6 +28,7 @@ class Input{
         return i;
     }
     char getKey(){return keypad.getKey();}
+    int getInt();
 };
 
 #endif

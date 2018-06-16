@@ -20,6 +20,11 @@ DisDetectors<DISNUM> dis;
 unsigned char disPins[DISNUM][2] = {
     {24, 25}, {26, 27}, {28, 29}, {30, 31}, {32, 33}};
 
+static const char* DMACROTABLE[] = {
+    "RWMAX",       "LWMAX",       "MINTURNDIS",   "TURNDELAY",  "LOSTDEBUFF",
+    "REVADJSPEED", "SDISUPBOUND", "SDISLOWBOUND", "ADISLOWLIM", "ADISRANDOM",
+    "QDISRANDOM",  "QDISRANDOMS", "PHOTODIS"};
+
 unsigned char rWheel = 0, lWheel = 0;
 
 /////////////////////////////////////////////////////////
@@ -214,12 +219,66 @@ void doTurn() {
 }
 
 /////////////////////////////////////////////////////////
+//-------------- for the tasks in tune-----------------//
+////////////////////////////////////////////////////////
+
+void changeMacro() {
+  int num = 0;
+  while (1) {
+    Output::screen().clear();
+    Output::screen().print("enter a number to select the MACRO");
+    num = Input::device().getInt();
+    if (num >= DataCenter::M) {
+      Output::screen().parse("{Out of range!} d c");
+      continue;
+    }
+    Output::screen().clear();
+    Output::screen().print("you select: ");
+    Output::screen().print(DMACROTABLE[num],2);
+    Output::screen().print("A to continue", 3);
+    while(Input::device().getKey() != 'A');
+    break;
+  }
+  Output::screen().clear();
+  Output::screen().print("enter the value of the MACRO");
+  int v = Input::device().getInt();
+  DataCenter::get().write(num, v);
+  DataCenter::get().save();
+}
+
+void getPhotodis() {
+  Output::screen().clear();
+  Output::screen().print("A to return, B to start a new detect.");
+  char key;
+  int dir = UNDEFINEDDIR;
+  while (1) {
+    key = Input::device().getKey();
+    if (key == 'A') return;
+    if (key == 'B') {
+      OpenMV::endDetect();
+      OpenMV::startDetect();
+    }
+    if (millis() % 50 > 40) {
+      Output::screen().print(dis[0], 2);
+      dir = OpenMV::getDir();
+      if (dir == 1) {
+        Output::screen().print("right", 3);
+      } else if (dir == 0) {
+        Output::screen().print("left", 3);
+      } else {
+        Output::screen().print("undefined", 3);
+      }
+    }
+  }
+}
+
+/////////////////////////////////////////////////////////
 //-------------- for the tasks in MENU-----------------//
 ////////////////////////////////////////////////////////
 
 void run() {
   Output::screen().clear();
-  const int MINTURNDIS = DataCenter::get().val(DataCenter::MINTURNDIS);  
+  const int MINTURNDIS = DataCenter::get().val(DataCenter::MINTURNDIS);
   while (1) {
     sprintf(buf, "c b{%ld&%ld;%ld&%ld;%ld&;}", dis[0], dis[1], dis[2], dis[3],
             dis[4]);
@@ -229,16 +288,21 @@ void run() {
   }
 }
 
+#define TUNEMENU "c b{1.change MACRO;2.get PHOTODIS;A to return}"
+
 void tune() {
-  Output::screen().parse("c b{1. get disPhoto; 2. get disTurn;A to return}");
+  Output::screen().parse(TUNEMENU);
   char key;
   while (1) {
     key = Input::device().getKey();
     if (key != NO_KEY) {
       switch (key) {
         case '1':
+          changeMacro();
+          Output::screen().parse(TUNEMENU);
           break;
         case '2':
+          Output::screen().parse(TUNEMENU);
           break;
         case 'A':
           return;
@@ -265,14 +329,10 @@ void reset() {
 }
 
 void about() {
-  static const char* str[] = {"RWMAX",       "LWMAX",        "MINTURNDIS",
-                             "TURNDELAY",   "LOSTDEBUFF",   "REVADJSPEED",
-                             "SDISUPBOUND", "SDISLOWBOUND", "ADISLOWLIM",
-                             "ADISRANDOM",  "QDISRANDOM",   "QDISRANDOMS"};
   Output::screen().parse("c p {following are the data}d");
   for (int i = 0; i < DataCenter::M; i++) {
     Output::screen().clear();
-    Output::screen().print(str[i], 1);
+    Output::screen().print(DMACROTABLE[i], 1);
     Output::screen().print(DataCenter::get().val(i));
     delay(1000);
   }
@@ -388,9 +448,7 @@ void tss() {
   }
 }
 
-void singleMove() {
-  run();
-}
+void singleMove() { run(); }
 #define DEBUGMENU "c b{1.serial&2.GPIO;3.command&4.moter;5.sensor&6.smove;}"
 
 void debug() {

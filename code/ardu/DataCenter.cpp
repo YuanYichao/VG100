@@ -15,6 +15,7 @@ void DataCenter::reset() {
   dataArr[ADISRANDOM] = 50;
   dataArr[QDISRANDOM] = 50;
   dataArr[QDISRANDOMS] = 100;
+  dataArr[PHOTODIS] = 1200;
 }
 
 int DataCenter::val(unsigned char no) { return dataArr[no]; }

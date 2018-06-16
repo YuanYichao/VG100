@@ -29,7 +29,8 @@ class DataCenter {
   static const unsigned char ADISRANDOM = 9;
   static const unsigned char QDISRANDOM = 10;
   static const unsigned char QDISRANDOMS = 11;
-  static const int M =12;
+  static const unsigned char PHOTODIS =12;
+  static const int M =13;
   
   private:
   DataCenter(){}
