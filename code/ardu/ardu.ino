@@ -1,11 +1,10 @@
-#include <EEPROM.h>
 #include <stdio.h>
 #include "Chassis.h"
+#include "DataCenter.h"
 #include "DisDetectors.hpp"
 #include "Input.h"
 #include "OpenMV.h"
 #include "Output.h"
-#include "Recorder.h"
 
 char buf[256];
 const double RANGE = 100;
@@ -15,40 +14,25 @@ const double RANGE = 100;
 #define UNDEFINEDDIR -1
 #define AWMAX 255
 
-#define RWMAX 255
-#define LWMAX 255
-#define MINTURNDIS 700
-#define TURNDELAY 360
-#define LOSTDEBUFF 100
-#define REVADJSPEED 80
-#define SDISUPBOUND 1400
-#define SDISLOWBOUND 1200
-#define ADISLOWLIM 500
-#define ADISRANDOM 50
-#define QDISRANDOM 50
-#define QDISRANDOMS 100 
-
 // f, r1, r2, l1, l2
 #define DISNUM 5
 DisDetectors<DISNUM> dis;
 unsigned char disPins[DISNUM][2] = {
     {24, 25}, {26, 27}, {28, 29}, {30, 31}, {32, 33}};
 
-InfoData info;
+unsigned char rWheel = 0, lWheel = 0;
 
-unsigned char rWheel = RWMAX, lWheel = LWMAX;
-
-bool unready() { return info.photoDis < 0 || info.turnDis < 0; }
-// for the running task
-
+/////////////////////////////////////////////////////////
+//-------------- for the running task-----------------//
+////////////////////////////////////////////////////////
 int avgDisRight() { return (dis[1] + dis[2]) / 2; }
 
 int avgDisLeft() { return (dis[3] + dis[4]) / 2; }
 
-void adjustAngle(int dir){
-  if(dir == RIGHT){
+void adjustAngle(int dir) {
+  if (dir == RIGHT) {
     Chassis::state().write(-255, 255);
-  }else{
+  } else {
     Chassis::state().write(255, -255);
   }
   Chassis::state().move();
@@ -56,95 +40,118 @@ void adjustAngle(int dir){
 
 void fourSensorsStraight() {
   Output::screen().print("FourStraight", 3);
+  const int RWMAX = DataCenter::get().val(DataCenter::RWMAX);
+  const int LWMAX = DataCenter::get().val(DataCenter::LWMAX);
+  const int ADISLOWLIM = DataCenter::get().val(DataCenter::ADISLOWLIM);
+  const int QDISRANDOM = DataCenter::get().val(DataCenter::QDISRANDOM);
+  const int QDISRANDOMS = DataCenter::get().val(DataCenter::QDISRANDOMS);
   rWheel = RWMAX;
   lWheel = LWMAX;
   int avgR = avgDisRight();
   int avgL = avgDisLeft();
-  if(!withinError(avgR, avgL, QDISRANDOM)){
-    if(avgR > avgL){
+  if (!withinError(avgR, avgL, QDISRANDOM)) {
+    if (avgR > avgL) {
       rWheel -= (avgR - avgL) - QDISRANDOM;
-    }else {
+    } else {
       lWheel -= (avgL - avgR) - QDISRANDOM;
     }
   }
   int dRb = dis[2] + dis[3];
   int dRf = dis[1] + dis[4];
-  if(!withinError(dRb, dRf, QDISRANDOMS)){
-    if(dRf > dRb){
+  if (!withinError(dRb, dRf, QDISRANDOMS)) {
+    if (dRf > dRb) {
       rWheel -= (dRf - dRb) - QDISRANDOMS;
-    }else {
+    } else {
       lWheel -= (dRb - dRf) - QDISRANDOMS;
     }
   }
-  if(dis[1] < ADISLOWLIM || dis[2] < ADISLOWLIM){
+  if (dis[1] < ADISLOWLIM || dis[2] < ADISLOWLIM) {
     adjustAngle(LEFT);
   }
-  if(dis[3] < ADISLOWLIM || dis[4] < ADISLOWLIM){
+  if (dis[3] < ADISLOWLIM || dis[4] < ADISLOWLIM) {
     adjustAngle(RIGHT);
   }
   Chassis::state().write(rWheel, lWheel);
 }
 
-
-void dualSensorsRight(){
+void dualSensorsRight() {
   Output::screen().print("DualRStraight", 3);
+  const int RWMAX = DataCenter::get().val(DataCenter::RWMAX);
+  const int LWMAX = DataCenter::get().val(DataCenter::LWMAX);
+  const int ADISLOWLIM = DataCenter::get().val(DataCenter::ADISLOWLIM);
+  const int SDISUPBOUND = DataCenter::get().val(DataCenter::SDISUPBOUND);
+  const int SDISLOWBOUND = DataCenter::get().val(DataCenter::SDISLOWBOUND);
+  const int ADISRANDOM = DataCenter::get().val(DataCenter::ADISRANDOM);
   lWheel = LWMAX;
   rWheel = RWMAX;
-  if(withinError(dis[1], dis[2], 50));
+  if (withinError(dis[1], dis[2], ADISRANDOM))
+    ;
   if (dis[1] > dis[2]) {
     rWheel = RWMAX - (dis[1] - dis[2]);
   } else if (dis[1] < dis[2]) {
     lWheel = LWMAX - (dis[2] - dis[1]);
   }
-  if(dis[1] + dis[2] > SDISUPBOUND){
+  if (dis[1] + dis[2] > SDISUPBOUND) {
     rWheel -= (dis[1] + dis[2]) - SDISUPBOUND;
   }
-  if(dis[1] + dis[2] < SDISLOWBOUND){
+  if (dis[1] + dis[2] < SDISLOWBOUND) {
     lWheel -= SDISLOWBOUND - (dis[1] + dis[2]);
   }
-  if(dis[1] < ADISLOWLIM || dis[2] < ADISLOWLIM){
+  if (dis[1] < ADISLOWLIM || dis[2] < ADISLOWLIM) {
     adjustAngle(LEFT);
   }
   Chassis::state().write(rWheel, lWheel);
 }
 
-void dualSensorsLeft(){
+void dualSensorsLeft() {
   Output::screen().print("DualLStraight", 3);
+  const int RWMAX = DataCenter::get().val(DataCenter::RWMAX);
+  const int LWMAX = DataCenter::get().val(DataCenter::LWMAX);
+  const int ADISLOWLIM = DataCenter::get().val(DataCenter::ADISLOWLIM);
+  const int SDISUPBOUND = DataCenter::get().val(DataCenter::SDISUPBOUND);
+  const int SDISLOWBOUND = DataCenter::get().val(DataCenter::SDISLOWBOUND);
+  const int ADISRANDOM = DataCenter::get().val(DataCenter::ADISRANDOM);
   lWheel = LWMAX;
   rWheel = RWMAX;
-  if(withinError(dis[3], dis[4], ADISRANDOM));
+  if (withinError(dis[3], dis[4], ADISRANDOM))
+    ;
   if (dis[4] > dis[3]) {
     rWheel = RWMAX - (dis[4] - dis[3]);
   } else if (dis[4] < dis[3]) {
     lWheel = LWMAX - (dis[3] - dis[4]);
   }
-  if(dis[3] + dis[4] > SDISUPBOUND){
+  if (dis[3] + dis[4] > SDISUPBOUND) {
     lWheel -= (dis[3] + dis[4]) - SDISUPBOUND;
   }
-  if(dis[3] + dis[4] < SDISLOWBOUND){
+  if (dis[3] + dis[4] < SDISLOWBOUND) {
     rWheel -= SDISLOWBOUND - (dis[3] + dis[4]);
   }
-  if(dis[3] < ADISLOWLIM || dis[4] < ADISLOWLIM){
+  if (dis[3] < ADISLOWLIM || dis[4] < ADISLOWLIM) {
     adjustAngle(RIGHT);
   }
   Chassis::state().write(rWheel, lWheel);
 }
 
-void searchSignal(){
-  Chassis::state().write(RWMAX - LOSTDEBUFF,LWMAX - LOSTDEBUFF);
-  if(dis[1] < ADISLOWLIM || dis[2] < ADISLOWLIM) adjustAngle(LEFT);
-  if(dis[3] < ADISLOWLIM || dis[4] < ADISLOWLIM) adjustAngle(RIGHT);
-} 
+void searchSignal() {
+  const int RWMAX = DataCenter::get().val(DataCenter::RWMAX);
+  const int LWMAX = DataCenter::get().val(DataCenter::LWMAX);
+  const int LOSTDEBUFF = DataCenter::get().val(DataCenter::LOSTDEBUFF);
+  const int ADISLOWLIM = DataCenter::get().val(DataCenter::ADISLOWLIM);
+  Chassis::state().write(RWMAX - LOSTDEBUFF, LWMAX - LOSTDEBUFF);
+
+  if (dis[1] < ADISLOWLIM || dis[2] < ADISLOWLIM) adjustAngle(LEFT);
+  if (dis[3] < ADISLOWLIM || dis[4] < ADISLOWLIM) adjustAngle(RIGHT);
+}
 
 void goStraight() {
   dis.detect();
   if (dis.normal(1) && dis.normal(2) && dis.normal(3) && dis.normal(4)) {
-    fourSensorsStraight();  
-  }else if(dis.normal(1) && dis.normal(2)){
+    fourSensorsStraight();
+  } else if (dis.normal(1) && dis.normal(2)) {
     dualSensorsRight();
   } else if (dis.normal(3) && dis.normal(4)) {
     dualSensorsLeft();
-  } else{
+  } else {
     searchSignal();
   }
   Chassis::state().move();
@@ -156,7 +163,7 @@ bool withinError(long dis1, long dis2, long Merror) {
 }
 
 int getDirection() {
-  //int d = OpenMV::getDir();
+  // int d = OpenMV::getDir();
   int d = UNDEFINEDDIR;
   if (d == UNDEFINEDDIR) {
     if (dis[1] > dis[3]) {
@@ -171,28 +178,32 @@ int getDirection() {
   }
 }
 
-void aftAdjust(int dir){
-  if(dir == RIGHT){
-    if(dis.normal(3) && dis.normal(4)) return;
+void aftAdjust(int dir) {
+  const int REVADJSPEED = DataCenter::get().val(DataCenter::REVADJSPEED);
+  if (dir == RIGHT) {
+    if (dis.normal(3) && dis.normal(4)) return;
     Chassis::state().write(REVADJSPEED, -REVADJSPEED);
     Chassis::state().move();
-    while(!dis.normal(3) || !dis.normal(4)) continue;
-  }else{
-    if(dis.normal(1) && dis.normal(2)) return;
+    while (!dis.normal(3) || !dis.normal(4)) continue;
+  } else {
+    if (dis.normal(1) && dis.normal(2)) return;
     Chassis::state().write(-REVADJSPEED, REVADJSPEED);
     Chassis::state().move();
-    while(!dis.normal(1) || !dis.normal(2)) continue;
+    while (!dis.normal(1) || !dis.normal(2)) continue;
   }
 }
 
 void doTurn() {
-  Output::screen().print("doTurn",3);
+  Output::screen().print("doTurn", 3);
+  const int RWMAX = DataCenter::get().val(DataCenter::RWMAX);
+  const int LWMAX = DataCenter::get().val(DataCenter::LWMAX);
+  const int TURNDELAY = DataCenter::get().val(DataCenter::TURNDELAY);
   static const int high = AWMAX, low = -AWMAX;
   int dir = getDirection();
-  while(dir == UNDEFINEDDIR) dir = getDirection();
-  if(dir == RIGHT){
+  while (dir == UNDEFINEDDIR) dir = getDirection();
+  if (dir == RIGHT) {
     Chassis::state().write(low, high);
-  }else{
+  } else {
     Chassis::state().write(high, low);
   }
   Chassis::state().move();
@@ -202,118 +213,20 @@ void doTurn() {
   Chassis::state().move();
 }
 
-
-
-void doRun() {
-  bool sd = false, st = false;
-  int dir = UNDEFINEDDIR;
-  while (1) {
-    if (dis[0] < info.photoDis && dis[0] > info.turnDis && sd == false) {
-      OpenMV::startDetect();
-      sd = true;
-    }
-    if (dis[0] < info.turnDis && st == false) {
-      sd = false;
-      dir = OpenMV::getDir();
-      OpenMV::endDetect();
-      st = true;
-    }
-    if (st) {
-      if (dir == UNDEFINEDDIR) {
-        doTurn();
-      } else {
-        doTurn();
-      }
-      st = false;
-    }
-    goStraight();
-    Chassis::state().move();
-  }
-}
+/////////////////////////////////////////////////////////
+//-------------- for the tasks in MENU-----------------//
+////////////////////////////////////////////////////////
 
 void run() {
   Output::screen().clear();
-  if (unready()) {
-    Output::screen().parse("{distance data is not collected!} d d c");
-  } else {
-    Output::screen().parse("{distance data is collected} d c");
-  }
-  Output::screen().parse("{ready to run, press A to continue}");
-  while (Input::device().getKey() != 'A') continue;
-  doRun();
-}
-
-void configureDisTurn() {
-  Output::screen().parse(
-      "c p{now begin to configure the distance where this car would start to "
-      "turn.} c");
-  double d;
-  int dir;
-  char key;
+  const int MINTURNDIS = DataCenter::get().val(DataCenter::MINTURNDIS);  
   while (1) {
-    Output::screen().parse(
-        "c p{put the car at a desired distance and press C to "
-        "continue}");
-    while (Input::device().getKey() != 'C') continue;
-    Output::screen().parse("c {start testing}");
-    d = dis[0];
-    OpenMV::startDetect();
-    delay(1000);
-    dir = OpenMV::getDir();
-    OpenMV::endDetect();
-    Output::screen().print("is everything okay?", 1);
-    Output::screen().print("A: agian. B: save", 3);
-    while ((key = Input::device().getKey()) == NO_KEY) continue;
-    if (key == 'A') {
-      continue;
-    } else {
-      break;
-    }
+    sprintf(buf, "c b{%ld&%ld;%ld&%ld;%ld&;}", dis[0], dis[1], dis[2], dis[3],
+            dis[4]);
+    Output::screen().parse(buf);
+    if (dis[0] < MINTURNDIS) doTurn();
+    goStraight();
   }
-  info.turnDis = d;
-}
-
-void configureDisPhoto() {
-  Output::screen().parse(
-      "c p{now begin to configure the distance where this car would start to "
-      "photo and detect.} d");
-  char key;
-  int dir;
-  double d;
-  while (1) {
-    Output::screen().parse(
-        "c p{put the car at a desired distance and press C to "
-        "continue}");
-    while (Input::device().getKey() != 'C') continue;
-    Output::screen().parse("c {start testing}");
-    d = dis[0];
-    OpenMV::startDetect();
-    delay(1000);
-    dir = OpenMV::getDir();
-    OpenMV::endDetect();
-    Output::screen().parse("c {the Result: dis is }");
-    Output::screen().print(d, 1);
-    switch (dir) {
-      case 0:
-        Output::screen().print("left", 2);
-        break;
-      case 1:
-        Output::screen().print("right", 2);
-        break;
-      case -1:
-        Output::screen().print("failed", 2);
-      default:
-        break;
-    }
-    Output::screen().print("A: agian. B: save", 3);
-    while ((key = Input::device().getKey()) == NO_KEY) continue;
-    if (key == 'A') {
-      continue;
-    } else {
-      break;
-    }
-  }
-  info.photoDis = d;
 }
 
 void tune() {
@@ -324,13 +237,10 @@ void tune() {
     if (key != NO_KEY) {
       switch (key) {
         case '1':
-          configureDisPhoto();
           break;
         case '2':
-          configureDisTurn();
           break;
         case 'A':
-          Recorder::disk().record(info);
           return;
         default:
           break;
@@ -340,41 +250,37 @@ void tune() {
 }
 
 void reset() {
-  Output::screen().parse("c {reset} d");
   Output::screen().parse(
-      ("c p{you are going to reset the EEPROM.} c p {This process is "
-       "not recoverable!} d"));
+      ("c p {This process is "
+       "not recoverable!} d c {A to return} d"));
   char key;
   while ((key = Input::device().getKey()) == NO_KEY) continue;
   if (key == 'A')
     return;
-  else
-    for (int i = 0; i < EEPROM.length(); i++) {
-      if (EEPROM.read(i) != 0) EEPROM.write(i, 0);
-    }
+  else {
+    DataCenter::get().reset();
+    DataCenter::get().save();
+  }
   Output::screen().parse("c p {the EEPROM has been reset} d d");
 }
 
-void aboutpt(double v, const char* err) {
-  if (v < 0) {
+void about() {
+  static const char* str[] = {"RWMAX",       "LWMAX",        "MINTURNDIS",
+                             "TURNDELAY",   "LOSTDEBUFF",   "REVADJSPEED",
+                             "SDISUPBOUND", "SDISLOWBOUND", "ADISLOWLIM",
+                             "ADISRANDOM",  "QDISRANDOM",   "QDISRANDOMS"};
+  Output::screen().parse("c p {following are the data}d");
+  for (int i = 0; i < DataCenter::M; i++) {
     Output::screen().clear();
-    Output::screen().print(err);
-    delay(1000);
-  } else {
-    Output::screen().print(v);
+    Output::screen().print(str[i], 1);
+    Output::screen().print(DataCenter::get().val(i));
     delay(1000);
   }
 }
 
-void about() {
-  Output::screen().parse(
-      "c p {following are the data}  d c{l, w, sd, pd, td} d");
-  aboutpt(info.l, "length undefined");
-  aboutpt(info.w, "width undefined");
-  aboutpt(info.sensorDis, "sensorDis undefined");
-  aboutpt(info.photoDis, "photoDis undefined");
-  aboutpt(info.turnDis, "turnDis undefined");
-}
+/////////////////////////////////////////////////////////////
+//-------------- for the tasks in sub MENU-----------------//
+/////////////////////////////////////////////////////////////
 
 void ts() {
   int i;
@@ -483,52 +389,39 @@ void tss() {
 }
 
 void singleMove() {
-  while (1) {
-    sprintf(buf, "c b{%ld&%ld;%ld&%ld;%ld&;}", dis[0], dis[1], dis[2], dis[3],
-            dis[4]);
-    Output::screen().parse(buf);
-    if (dis[0] < MINTURNDIS) doTurn();
-    goStraight();
-  }
+  run();
 }
 #define DEBUGMENU "c b{1.serial&2.GPIO;3.command&4.moter;5.sensor&6.smove;}"
 
 void debug() {
   char key;
-  Output::screen().parse(
-      DEBUGMENU);
+  Output::screen().parse(DEBUGMENU);
   while (1) {
     if ((key = Input::device().getKey()) != NO_KEY) {
       switch (key) {
         case '1':
           ts();
-          Output::screen().parse(DEBUGMENU
-              );
+          Output::screen().parse(DEBUGMENU);
           break;
         case '2':
           tg();
-          Output::screen().parse(
-              DEBUGMENU);
+          Output::screen().parse(DEBUGMENU);
           break;
         case '3':
           tc();
-          Output::screen().parse(
-              DEBUGMENU);
+          Output::screen().parse(DEBUGMENU);
           break;
         case '4':
           tm();
-          Output::screen().parse(
-              DEBUGMENU);
+          Output::screen().parse(DEBUGMENU);
           break;
         case '5':
           tss();
-          Output::screen().parse(
-              DEBUGMENU);
+          Output::screen().parse(DEBUGMENU);
           break;
         case '6':
           singleMove();
-          Output::screen().parse(
-              DEBUGMENU);
+          Output::screen().parse(DEBUGMENU);
           break;
         default:
           return;
@@ -544,7 +437,7 @@ void setup() {
   Serial.begin(9600);
   while (!Serial) continue;
   dis.attach(disPins);
-  info = Recorder::disk().readRecord();
+  DataCenter::get().load();
   Output::screen().parse(MENU);
 }
 
@@ -569,7 +462,7 @@ void loop() {
       break;
     case '5':
       debug();
-      Output::screen().parse( MENU);
+      Output::screen().parse(MENU);
     default:
       break;
   }
