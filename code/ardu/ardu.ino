@@ -15,10 +15,10 @@ const double RANGE = 100;
 #define AWMAX 255
 
 // f, r1, r2, l1, l2
-#define DISNUM 5
+#define DISNUM 7
 DisDetectors<DISNUM> dis;
 unsigned char disPins[DISNUM][2] = {
-    {24, 25}, {26, 27}, {28, 29}, {30, 31}, {32, 33}};
+    {24, 25}, {26, 27}, {28, 29}, {30, 31}, {32, 33}, {4, 5}, {6, 7}};
 
 static const char* DMACROTABLE[] = {
     "RWMAX",       "LWMAX",       "MINTURNDIS",   "TURNDELAY",  "LOSTDEBUFF",
@@ -30,15 +30,34 @@ unsigned char rWheel = 0, lWheel = 0;
 /////////////////////////////////////////////////////////
 //-------------- for the running task-----------------//
 ////////////////////////////////////////////////////////
+#define MINSDIS 800
+
+bool angleAlter(){
+    if(dis[5] < MINSDIS){
+      adjustAngle(LEFT);
+      for(int i = 0; i< 6; i++) dis.avlb(i);
+      Chassis::state().move();
+      return true;
+    }
+    if(dis[6] < MINSDIS){
+      adjustAngle(RIGHT);
+      for(int i = 0; i< 6; i++) dis.avlb(i); 
+      Chassis::state().move();
+      return true;
+    }
+  return false;
+}
+
+
 int avgDisRight() { return (dis[1] + dis[2]) / 2; }
 
 int avgDisLeft() { return (dis[3] + dis[4]) / 2; }
 
 void adjustAngle(int dir) {
   if (dir == RIGHT) {
-    Chassis::state().write(-255, 255);
+    Chassis::state().write(-120, 120);
   } else {
-    Chassis::state().write(255, -255);
+    Chassis::state().write(120, -120);
   }
   Chassis::state().move();
 }
@@ -56,25 +75,31 @@ void fourSensorsStraight() {
   int avgL = avgDisLeft();
   if (!withinError(avgR, avgL, QDISRANDOM)) {
     if (avgR > avgL) {
-      rWheel -= (avgR - avgL) - QDISRANDOM;
+      //rWheel -= (avgR - avgL) - QDISRANDOM;
+       rWheel = RWMAX - 100;
     } else {
-      lWheel -= (avgL - avgR) - QDISRANDOM;
+      //lWheel -= (avgL - avgR) - QDISRANDOM;
+      lWheel = LWMAX - 100;
     }
   }
   int dRb = dis[2] + dis[3];
   int dRf = dis[1] + dis[4];
   if (!withinError(dRb, dRf, QDISRANDOMS)) {
     if (dRf > dRb) {
-      rWheel -= (dRf - dRb) - QDISRANDOMS;
+      //rWheel -= (dRf - dRb) - QDISRANDOMS;
+      rWheel = RWMAX - 100;
     } else {
-      lWheel -= (dRb - dRf) - QDISRANDOMS;
+      //lWheel -= (dRb - dRf) - QDISRANDOMS;
+       lWheel = LWMAX - 100;
     }
   }
   if (dis[1] < ADISLOWLIM || dis[2] < ADISLOWLIM) {
     adjustAngle(LEFT);
+    return;
   }
   if (dis[3] < ADISLOWLIM || dis[4] < ADISLOWLIM) {
     adjustAngle(RIGHT);
+    return;
   }
   Chassis::state().write(rWheel, lWheel);
 }
@@ -92,18 +117,24 @@ void dualSensorsRight() {
   if (withinError(dis[1], dis[2], ADISRANDOM))
     ;
   if (dis[1] > dis[2]) {
-    rWheel = RWMAX - (dis[1] - dis[2]);
+    //rWheel = RWMAX - (dis[1] - dis[2]);
+    rWheel = RWMAX - 100;
   } else if (dis[1] < dis[2]) {
-    lWheel = LWMAX - (dis[2] - dis[1]);
+    //lWheel = LWMAX - (dis[2] - dis[1]);
+    lWheel = LWMAX - 100;
+    
   }
   if (dis[1] + dis[2] > SDISUPBOUND) {
-    rWheel -= (dis[1] + dis[2]) - SDISUPBOUND;
+    //rWheel -= (dis[1] + dis[2]) - SDISUPBOUND;
+    rWheel = RWMAX - 100;
   }
   if (dis[1] + dis[2] < SDISLOWBOUND) {
-    lWheel -= SDISLOWBOUND - (dis[1] + dis[2]);
+    //lWheel -= SDISLOWBOUND - (dis[1] + dis[2]);
+    lWheel = LWMAX - 100;
   }
   if (dis[1] < ADISLOWLIM || dis[2] < ADISLOWLIM) {
     adjustAngle(LEFT);
+    return;
   }
   Chassis::state().write(rWheel, lWheel);
 }
@@ -121,18 +152,23 @@ void dualSensorsLeft() {
   if (withinError(dis[3], dis[4], ADISRANDOM))
     ;
   if (dis[4] > dis[3]) {
-    rWheel = RWMAX - (dis[4] - dis[3]);
+    //rWheel = RWMAX - (dis[4] - dis[3]);
+    rWheel = RWMAX - 100;
   } else if (dis[4] < dis[3]) {
-    lWheel = LWMAX - (dis[3] - dis[4]);
+    //lWheel = LWMAX - (dis[3] - dis[4]);
+    lWheel = LWMAX - 100;
   }
   if (dis[3] + dis[4] > SDISUPBOUND) {
-    lWheel -= (dis[3] + dis[4]) - SDISUPBOUND;
+    //lWheel -= (dis[3] + dis[4]) - SDISUPBOUND;
+    lWheel = LWMAX - 100;
   }
   if (dis[3] + dis[4] < SDISLOWBOUND) {
-    rWheel -= SDISLOWBOUND - (dis[3] + dis[4]);
+    //rWheel -= SDISLOWBOUND - (dis[3] + dis[4]);
+     rWheel = RWMAX - 100;
   }
   if (dis[3] < ADISLOWLIM || dis[4] < ADISLOWLIM) {
     adjustAngle(RIGHT);
+    return;
   }
   Chassis::state().write(rWheel, lWheel);
 }
@@ -280,10 +316,10 @@ void run() {
   Output::screen().clear();
   const int MINTURNDIS = DataCenter::get().val(DataCenter::MINTURNDIS);
   while (1) {
-    sprintf(buf, "c b{%ld&%ld;%ld&%ld;%ld&;}", dis[0], dis[1], dis[2], dis[3],
-            dis[4]);
+    sprintf(buf, "c b{%ld&%ld;%ld&%ld;%ld&%ld;%ld&;}", dis[0], dis[1], dis[2], dis[3],
+            dis[4], dis[5], dis[6]);
     Output::screen().parse(buf);
-    if (dis[0] < MINTURNDIS) doTurn();
+    //if (dis[0] < MINTURNDIS) doTurn();
     goStraight();
   }
 }
@@ -348,7 +384,7 @@ void ts() {
   while (1) {
     if (Serial.available()) {
       Output::screen().parse("c {use A to return}");
-      for (i = 0; Serial.available(); i++) {
+      for (i = 0; Serial.available() && i < 20; i++) {
         buf[i] = Serial.read();
         delay(20);
       }
@@ -440,10 +476,9 @@ void tss() {
     if (key == 'A') break;
     if (key >= '0' && key <= '4') {
       dis.avlb(key - '0');
-      Serial.print("enter");
     }
-    sprintf(buf, "c b{%ld&%ld;%ld&%ld;%ld&;}", dis[0], dis[1], dis[2], dis[3],
-            dis[4]);
+    sprintf(buf, "c b{%ld&%ld;%ld&%ld;%ld&%ld;%ld&;}", dis[0], dis[1], dis[2], dis[3],
+            dis[4], dis[5], dis[6]);
     Output::screen().parse(buf);
   }
 }

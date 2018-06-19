@@ -87,8 +87,9 @@ class DisDetectors {
 
   bool normal(int num){
     long dis = get(num);
-    if (num == 0) return dis >= 0 && dis <= 50000;
-    return dis >= 0 && dis <= 2000;
+    if (num == 0) return dis > 0 && dis <= 150000;
+    if (num == 5 || num == 6) return dis > 0 && dis <= 4000;
+    return dis > 0 && dis <= 2000;
   }
 };
 
