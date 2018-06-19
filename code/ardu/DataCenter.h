@@ -30,7 +30,17 @@ class DataCenter {
   static const unsigned char QDISRANDOM = 10;
   static const unsigned char QDISRANDOMS = 11;
   static const unsigned char PHOTODIS =12;
-  static const int M =13;
+  static const unsigned char LINEARKDIS = 13;
+  static const unsigned char LINEARKANGLE = 14;
+  static const unsigned char TDELAY = 15;
+  static const unsigned char UNNORMALSIDE = 16;
+  static const unsigned char UNNORMALFRONT = 17;
+  static const unsigned char UNNORMALFOR = 18;
+  static const unsigned char FORTRIGDIS = 19;
+  static const unsigned char FORTRIGK = 20;
+  static const unsigned char SPINSPEED = 21;
+  static const unsigned char TURNEND = 22;
+  static const int M =23;
   
   private:
   DataCenter(){}

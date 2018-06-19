@@ -2,6 +2,7 @@
 #define DISDETECTORS
 
 #include <arduino.h>
+#include "DataCenter.h"
 
 template <int N>
 class DisDetectors {
@@ -23,18 +24,13 @@ class DisDetectors {
   unsigned long lastReadTime = 0;
   const unsigned int interval = 20;
   unsigned char avalBits = 0xff;
-  
 
-  bool timeOut(){
+  bool timeOut() {
     unsigned long t = millis();
     return t - lastReadTime > interval;
-  }  
-
-  void setlastReadTime(const unsigned long t){
-    lastReadTime = t;
   }
 
-
+  void setlastReadTime(const unsigned long t) { lastReadTime = t; }
 
  public:
   bool ready() { return rd; }
@@ -46,50 +42,45 @@ class DisDetectors {
       pinSets[i][1] = pins[i][1];
     }
   }
-  
+
   void detect() {
     for (int i = 0; i < N; i++) {
-      if(avalBits & (1 << i)){
-          dis[i] = detectSingle(pinSets[i][0], pinSets[i][1]);
+      if (avalBits & (1 << i)) {
+        dis[i] = detectSingle(pinSets[i][0], pinSets[i][1]);
       }
     }
     rd = true;
   }
-  
-  long operator[](const unsigned int i){
-    return get(i);
-  }
 
-  long get(const unsigned int Num) { 
-    if(!(avalBits & (1 << Num))) return -1;
-    if(timeOut() || !ready()){
+  long operator[](const unsigned int i) { return get(i); }
+
+  long get(const unsigned int Num) {
+    if (!(avalBits & (1 << Num))) return -1;
+    if (timeOut() || !ready()) {
       detect();
       setlastReadTime(millis());
     }
-    return dis[Num]; 
+    return dis[Num];
   }
 
-  void state(unsigned char bits){
-    avalBits = bits; 
-  }
+  void state(unsigned char bits) { avalBits = bits; }
 
-  void allOn(){
-    avalBits = 0xff;
-  }
+  void allOn() { avalBits = 0xff; }
 
-  unsigned char curState(){
-    return avalBits;
-  }
+  unsigned char curState() { return avalBits; }
 
-  void avlb(int num){
-    avalBits ^= (1 << num);
-  }
+  void avlb(int num) { avalBits ^= (1 << num); }
 
-  bool normal(int num){
+  bool normal(int num) {
     long dis = get(num);
-    if (num == 0) return dis > 0 && dis <= 150000;
-    if (num == 5 || num == 6) return dis > 0 && dis <= 4000;
-    return dis > 0 && dis <= 2000;
+    //--------
+    int UNNORMALFRONT = DataCenter::get().val(DataCenter::UNNORMALFRONT) * 100;
+    int UNNORMALSIDE = DataCenter::get().val(DataCenter::UNNORMALSIDE);
+    int UNNORMALFOR = DataCenter::get().val(DataCenter::UNNORMALFOR);
+    //------
+    if (num == 0) return dis > 0 && dis <= UNNORMALFRONT;
+    if (num == 5 || num == 6) return dis > 0 && dis <= UNNORMALFOR;
+    return dis > 0 && dis <= UNNORMALSIDE;
   }
 };
 
