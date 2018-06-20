@@ -4,6 +4,11 @@
 #include <arduino.h>
 #include "DataCenter.h"
 
+#define UNNORMALSIDE 2000
+#define UNNORMALFRONT 1500
+#define UNNORMALFOR 4000
+
+
 template <int N>
 class DisDetectors {
   unsigned char pinSets[N][2] = {{0}};
@@ -16,8 +21,9 @@ class DisDetectors {
     delayMicroseconds(10);
     digitalWrite(trig, LOW);
     //读取时间并输出距离
-    double distance_time = pulseIn(echo, HIGH);
-    long distance_length = distance_time / 58 * 100;  //微秒转化为cm
+    double distance_time = pulseIn(echo, HIGH, 50000);
+    long distance_length = distance_time / 58 * 100;
+    if (distance_length ==0) return -1;
     return distance_length;
   }
   bool rd = false;
@@ -73,10 +79,6 @@ class DisDetectors {
 
   bool normal(int num) {
     long dis = get(num);
-    //--------
-    int UNNORMALFRONT = DataCenter::get().val(DataCenter::UNNORMALFRONT) * 100;
-    int UNNORMALSIDE = DataCenter::get().val(DataCenter::UNNORMALSIDE);
-    int UNNORMALFOR = DataCenter::get().val(DataCenter::UNNORMALFOR);
     //------
     if (num == 0) return dis > 0 && dis <= UNNORMALFRONT;
     if (num == 5 || num == 6) return dis > 0 && dis <= UNNORMALFOR;
